@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LUT Generator — AI Color Grading</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #0f0f13;
+  --bg2:         #13131a;
+  --card:        #1a1a24;
+  --card2:       #1e1e2a;
+  --border:      #2a2a38;
+  --border2:     #333348;
+  --accent:      #7c6af7;
+  --accent-h:    #9385f9;
+  --accent-dim:  rgba(124,106,247,0.15);
+  --accent-glow: rgba(124,106,247,0.35);
+  --success:     #22c55e;
+  --warning:     #f59e0b;
+  --error:       #ef4444;
+  --text:        #e2e2f0;
+  --muted:       #7878a0;
+  --muted2:      #555570;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  min-height: 100vh;
+  padding: 0 0 80px;
+  line-height: 1.5;
+}
+
+/* ── Header ── */
+header {
+  text-align: center;
+  padding: 52px 24px 36px;
+  position: relative;
+}
+header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 60% at 50% 0%, rgba(124,106,247,0.12), transparent);
+  pointer-events: none;
+}
+.header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  background: var(--accent-dim);
+  border: 1px solid rgba(124,106,247,0.3);
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-h);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #c4bbff 0%, #7c6af7 40%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 10px;
+}
+.subtitle {
+  color: var(--muted);
+  font-size: 1.05rem;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* ── Layout ── */
+.container {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 24px;
+  margin-bottom: 20px;
+  position: relative;
+}
+.card-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin-bottom: 18px;
+}
+
+/* ── Drop zones ── */
+.drop-zones {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.drop-zone {
+  position: relative;
+  border: 2px dashed var(--border2);
+  border-radius: 14px;
+  min-height: 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  overflow: hidden;
+  text-align: center;
+  padding: 20px 14px;
+}
+.drop-zone:hover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.drop-zone.drag-over {
+  border-color: var(--accent-h);
+  background: rgba(124,106,247,0.12);
+}
+.drop-zone.has-image {
+  border-style: solid;
+  border-color: var(--accent);
+  padding: 0;
+}
+.drop-zone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+.dz-icon {
+  font-size: 2.2rem;
+  margin-bottom: 10px;
+  opacity: 0.45;
+}
+.dz-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.dz-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.dz-preview {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  border-radius: 12px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.has-image .dz-preview { opacity: 1; }
+.has-image .dz-icon,
+.has-image .dz-label,
+.has-image .dz-hint { display: none; }
+.dz-hover-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15,15,19,0.72);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 12px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+  z-index: 3;
+}
+.has-image:hover .dz-hover-overlay { opacity: 1; }
+.dz-hover-overlay span {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: white;
+}
+.dz-filename {
+  position: absolute;
+  bottom: 9px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent-h);
+  padding: 0 8px;
+  pointer-events: none;
+  z-index: 4;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* ── Generate section ── */
+.generate-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 30px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-h);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px var(--accent-glow);
+}
+.btn-primary:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.btn-ghost {
+  background: var(--accent-dim);
+  color: var(--accent-h);
+  border: 1px solid rgba(124,106,247,0.28);
+  padding: 9px 18px;
+  font-size: 0.85rem;
+}
+.btn-ghost:hover {
+  background: rgba(124,106,247,0.24);
+}
+.btn-sm {
+  padding: 7px 14px;
+  font-size: 0.8rem;
+  border-radius: 9px;
+}
+
+/* ── Spinner ── */
+.spinner {
+  width: 17px;
+  height: 17px;
+  border: 2.5px solid rgba(255,255,255,0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.55s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Error message ── */
+.error-box {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 11px;
+  padding: 11px 16px;
+  color: var(--error);
+  font-size: 0.88rem;
+  max-width: 600px;
+  width: 100%;
+  text-align: center;
+}
+
+/* ── V1 result ── */
+.v1-body {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+.v1-img {
+  width: 200px;
+  height: 150px;
+  border-radius: 11px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+}
+.v1-info { flex: 1; min-width: 0; }
+.v1-main-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.v1-desc {
+  font-size: 0.87rem;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 16px;
+  font-style: italic;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 13px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+.pill-refining {
+  background: var(--accent-dim);
+  color: var(--accent-h);
+  border: 1px solid rgba(124,106,247,0.28);
+}
+.pill-done {
+  background: rgba(34,197,94,0.1);
+  color: var(--success);
+  border: 1px solid rgba(34,197,94,0.28);
+}
+.pulse {
+  width: 6px; height: 6px;
+  background: currentColor;
+  border-radius: 50%;
+  animation: pulse-anim 1.4s ease-in-out infinite;
+}
+@keyframes pulse-anim {
+  0%,100% { opacity:1; transform:scale(1); }
+  50% { opacity:0.45; transform:scale(0.75); }
+}
+
+/* ── Progress ── */
+.progress-wrap { margin-bottom: 22px; }
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.79rem;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.progress-track {
+  height: 5px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #a78bfa);
+  border-radius: 3px;
+  transition: width 0.55s cubic-bezier(0.4,0,0.2,1);
+  width: 0%;
+}
+
+/* ── Iteration cards ── */
+.iter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 14px;
+  max-height: 620px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.iter-grid::-webkit-scrollbar { width: 4px; }
+.iter-grid::-webkit-scrollbar-track { background: transparent; }
+.iter-grid::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.iter-card {
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  overflow: hidden;
+  animation: fadeup 0.38s ease both;
+}
+@keyframes fadeup {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.iter-thumb {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  display: block;
+}
+.iter-footer {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.iter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.iter-num {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.score-badge {
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 2px 9px;
+  border-radius: 9px;
+}
+.score-red    { background: rgba(239,68,68,0.18);  color: var(--error); }
+.score-yellow { background: rgba(245,158,11,0.18); color: var(--warning); }
+.score-green  { background: rgba(34,197,94,0.18);  color: var(--success); }
+
+/* ── Final result ── */
+.final-body {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+.final-score-block { flex: 1; }
+.final-number {
+  font-size: 3.5rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  margin-bottom: 6px;
+}
+.final-sub {
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+.final-divider {
+  width: 1px;
+  height: 80px;
+  background: var(--border);
+}
+.final-actions { display: flex; flex-direction: column; gap: 10px; }
+
+/* ── AI unavailable notice ── */
+.no-gemini-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.22);
+  border-radius: 12px;
+  font-size: 0.86rem;
+  color: var(--warning);
+}
+.no-gemini-note .icon { font-size: 1.2rem; }
+
+/* ── Utils ── */
+.hidden { display: none !important; }
+
+@media (max-width: 600px) {
+  .drop-zones { grid-template-columns: 1fr; }
+  .v1-body { flex-direction: column; }
+  .v1-img { width: 100%; height: 200px; }
+  .final-body { flex-direction: column; gap: 16px; }
+  .final-divider { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-badge">
+    <span>✦</span> AI Powered
+  </div>
+  <h1>Color LUT Generator</h1>
+  <p class="subtitle">Upload a source image (color reference) and the photo you want to recolor. Get a .cube LUT that transforms your photo to match the source's color style — refined by AI.</p>
+</header>
+
+<div class="container">
+
+  <!-- ── Upload ── -->
+  <div class="card">
+    <div class="card-title">Step 1 — Upload Images</div>
+    <div class="drop-zones">
+
+      <div class="drop-zone" id="src-zone">
+        <input type="file" id="src-input" accept="image/*">
+        <div class="dz-preview" id="src-preview"></div>
+        <div class="dz-hover-overlay">
+          <span>🔄 Replace</span>
+        </div>
+        <div class="dz-icon">📷</div>
+        <div class="dz-label">Source Image</div>
+        <div class="dz-hint">Color reference — the look to extract</div>
+        <div class="dz-filename" id="src-name"></div>
+      </div>
+
+      <div class="drop-zone" id="tgt-zone">
+        <input type="file" id="tgt-input" accept="image/*">
+        <div class="dz-preview" id="tgt-preview"></div>
+        <div class="dz-hover-overlay">
+          <span>🔄 Replace</span>
+        </div>
+        <div class="dz-icon">🎨</div>
+        <div class="dz-label">Photo to Recolor</div>
+        <div class="dz-hint">Photo to recolor</div>
+        <div class="dz-filename" id="tgt-name"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Generate ── -->
+  <div class="generate-wrap">
+    <button class="btn btn-primary" id="gen-btn" disabled>
+      Generate LUT
+    </button>
+    <div class="error-box hidden" id="err-box"></div>
+  </div>
+
+  <!-- ── V1 Result ── -->
+  <div class="card hidden" id="v1-card">
+    <div class="card-title">Step 2 — V1 LUT Result</div>
+    <div class="v1-body">
+      <img class="v1-img" id="v1-img" src="" alt="V1 Preview">
+      <div class="v1-info">
+        <div class="v1-main-title">Color Transfer LUT</div>
+        <div class="v1-desc" id="v1-desc">Analyzing source color style...</div>
+        <div class="pill pill-refining" id="refine-pill">
+          <div class="pulse"></div>
+          Refining with AI…
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-ghost" id="v1-dl-btn">⬇ Download V1 .cube</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── AI unavailable notice ── -->
+  <div class="no-gemini-note hidden" id="no-gemini-note">
+    <span class="icon">⚠️</span>
+    <div>
+      <strong>AI not available.</strong> Set AI_PROVIDER and AI_API_KEY in your .env file to enable iterative refinement. Your V1 LUT is ready to download above.
+    </div>
+  </div>
+
+  <!-- ── Refinement Iterations ── -->
+  <div class="card hidden" id="refine-card">
+    <div class="card-title">Step 3 — AI Iterative Refinement</div>
+    <div class="progress-wrap">
+      <div class="progress-meta">
+        <span id="prog-label">Waiting…</span>
+        <span id="prog-pct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="prog-fill"></div>
+      </div>
+    </div>
+    <div class="iter-grid" id="iter-grid"></div>
+  </div>
+
+  <!-- ── Final ── -->
+  <div class="card hidden" id="final-card">
+    <div class="card-title">Best Result</div>
+    <div class="final-body">
+      <div class="final-score-block">
+        <div class="final-number" id="final-num">—</div>
+        <div class="final-sub" id="final-sub">Best match score</div>
+      </div>
+      <div class="final-divider"></div>
+      <div class="final-actions">
+        <button class="btn btn-primary" id="best-dl-btn">⬇ Download Best LUT</button>
+        <button class="btn btn-ghost" id="v1-dl-btn-2">⬇ Download V1 LUT</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let srcFile = null, tgtFile = null;
+let v1CubeB64 = null, bestCubeB64 = null, sessionId = null;
+const MAX_ITER = 6;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const genBtn      = document.getElementById('gen-btn');
+const errBox      = document.getElementById('err-box');
+const v1Card      = document.getElementById('v1-card');
+const refineCard  = document.getElementById('refine-card');
+const finalCard   = document.getElementById('final-card');
+const noGeminiBox = document.getElementById('no-gemini-note');
+const refinePill  = document.getElementById('refine-pill');
+
+// ── Drop zone setup ───────────────────────────────────────────────────────────
+function setupZone(zoneId, inputId, previewId, nameId, onFile) {
+  const zone    = document.getElementById(zoneId);
+  const input   = document.getElementById(inputId);
+  const preview = document.getElementById(previewId);
+  const nameEl  = document.getElementById(nameId);
+
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', ()  => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const f = e.dataTransfer?.files?.[0];
+    if (f && f.type.startsWith('image/')) setFile(f);
+  });
+  input.addEventListener('change', () => { if (input.files[0]) setFile(input.files[0]); });
+
+  function setFile(file) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      preview.style.backgroundImage = `url(${ev.target.result})`;
+      zone.classList.add('has-image');
+      const n = file.name;
+      nameEl.textContent = n.length > 24 ? n.slice(0, 22) + '…' : n;
+    };
+    reader.readAsDataURL(file);
+    onFile(file);
+  }
+}
+
+setupZone('src-zone', 'src-input', 'src-preview', 'src-name', f => { srcFile = f; checkReady(); });
+setupZone('tgt-zone', 'tgt-input', 'tgt-preview', 'tgt-name', f => { tgtFile = f; checkReady(); });
+
+function checkReady() {
+  genBtn.disabled = !(srcFile && tgtFile);
+}
+
+// ── Download helper ───────────────────────────────────────────────────────────
+function dlCube(b64, filename) {
+  const blob = new Blob([atob(b64)], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// ── Score badge helper ────────────────────────────────────────────────────────
+function scoreCls(s) {
+  return s >= 0.85 ? 'score-green' : s >= 0.70 ? 'score-yellow' : 'score-red';
+}
+function scoreColor(s) {
+  return s >= 0.85 ? 'var(--success)' : s >= 0.70 ? 'var(--warning)' : 'var(--error)';
+}
+
+// ── Progress update ───────────────────────────────────────────────────────────
+function setProgress(cur, max) {
+  const pct = max > 0 ? Math.round((cur / max) * 100) : 0;
+  document.getElementById('prog-fill').style.width = pct + '%';
+  document.getElementById('prog-label').textContent =
+    cur === max ? `Done — ${max} iteration${max !== 1 ? 's' : ''}` : `Iteration ${cur} / ${max}`;
+  document.getElementById('prog-pct').textContent = pct + '%';
+}
+
+// ── Add iteration card ────────────────────────────────────────────────────────
+function addIterCard(data) {
+  const grid  = document.getElementById('iter-grid');
+  const score = parseFloat(data.score);
+  const cls   = scoreCls(score);
+  const card  = document.createElement('div');
+  card.className = 'iter-card';
+  card.innerHTML = `
+    <img class="iter-thumb" src="data:image/jpeg;base64,${data.preview_b64}" alt="Iteration ${data.iteration}">
+    <div class="iter-footer">
+      <div class="iter-row">
+        <span class="iter-num">Iter ${data.iteration}</span>
+        <span class="score-badge ${cls}">${score.toFixed(3)}</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="width:100%">⬇ Download .cube</button>
+    </div>`;
+  card.querySelector('button').addEventListener('click', () =>
+    dlCube(data.cube_b64, `lut_iter${data.iteration}.cube`));
+  grid.appendChild(card);
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── Show final result ─────────────────────────────────────────────────────────
+function showFinal(bestScore, iterCount) {
+  finalCard.classList.remove('hidden');
+  const numEl = document.getElementById('final-num');
+  const subEl = document.getElementById('final-sub');
+
+  if (bestScore > 0) {
+    numEl.textContent = bestScore.toFixed(3);
+    numEl.style.color = scoreColor(bestScore);
+    subEl.textContent = `Best match score after ${iterCount} iteration${iterCount !== 1 ? 's' : ''}`;
+  } else {
+    numEl.textContent = 'N/A';
+    numEl.style.color = 'var(--muted)';
+    subEl.textContent = 'AI refinement unavailable — V1 LUT is your best result';
+  }
+
+  setProgress(MAX_ITER, MAX_ITER);
+  refinePill.classList.add('hidden');
+  const donePill = document.createElement('div');
+  donePill.className = 'pill pill-done';
+  donePill.innerHTML = '✓ Refinement complete';
+  refinePill.parentNode.insertBefore(donePill, refinePill);
+}
+
+// ── Generate ──────────────────────────────────────────────────────────────────
+genBtn.addEventListener('click', async () => {
+  if (!srcFile || !tgtFile) return;
+
+  // Reset UI
+  v1Card.classList.add('hidden');
+  refineCard.classList.add('hidden');
+  finalCard.classList.add('hidden');
+  noGeminiBox.classList.add('hidden');
+  errBox.classList.add('hidden');
+  document.getElementById('iter-grid').innerHTML = '';
+  const existingDonePill = document.querySelector('.pill-done');
+  if (existingDonePill) existingDonePill.remove();
+  refinePill.classList.remove('hidden');
+  v1CubeB64 = bestCubeB64 = sessionId = null;
+
+  genBtn.disabled = true;
+  genBtn.innerHTML = '<div class="spinner"></div> Generating…';
+
+  const fd = new FormData();
+  fd.append('source', srcFile);
+  fd.append('target', tgtFile);
+
+  try {
+    const res = await fetch('/api/generate', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Generation failed');
+
+    v1CubeB64 = data.cube_b64;
+    sessionId = data.session_id;
+
+    document.getElementById('v1-img').src = `data:image/jpeg;base64,${data.preview_b64}`;
+    document.getElementById('v1-desc').textContent =
+      (data.description && data.description !== 'N/A')
+        ? data.description
+        : 'LAB colorspace statistical color transfer applied.';
+    v1Card.classList.remove('hidden');
+
+    genBtn.innerHTML = 'Generate LUT';
+    genBtn.disabled = false;
+    checkReady();
+
+    // Kick off refinement
+    startRefinement();
+
+  } catch (err) {
+    genBtn.innerHTML = 'Generate LUT';
+    genBtn.disabled = false;
+    checkReady();
+    showErr(err.message);
+  }
+});
+
+// ── V1 download buttons ───────────────────────────────────────────────────────
+document.getElementById('v1-dl-btn').addEventListener('click',
+  () => v1CubeB64 && dlCube(v1CubeB64, 'lut_v1.cube'));
+document.getElementById('v1-dl-btn-2').addEventListener('click',
+  () => v1CubeB64 && dlCube(v1CubeB64, 'lut_v1.cube'));
+document.getElementById('best-dl-btn').addEventListener('click',
+  () => (bestCubeB64 || v1CubeB64) && dlCube(bestCubeB64 || v1CubeB64, 'lut_best.cube'));
+
+// ── SSE refinement ────────────────────────────────────────────────────────────
+async function startRefinement() {
+  refineCard.classList.remove('hidden');
+  setProgress(0, MAX_ITER);
+
+  const fd = new FormData();
+  fd.append('session_id', sessionId);
+
+  let iterCount = 0;
+  let streamBestScore = 0;
+  let aiAvailable = true;
+
+  try {
+    const res = await fetch('/api/refine/stream', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('Stream request failed');
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop(); // keep incomplete tail
+
+      for (const part of parts) {
+        if (!part.trim()) continue;
+        let evtType = 'message', dataStr = '';
+        for (const line of part.split('\n')) {
+          if (line.startsWith('event: ')) evtType = line.slice(7).trim();
+          else if (line.startsWith('data: ')) dataStr = line.slice(6).trim();
+        }
+        if (!dataStr) continue;
+
+        let payload;
+        try { payload = JSON.parse(dataStr); } catch { continue; }
+
+        if (evtType === 'iteration') {
+          iterCount++;
+          setProgress(payload.iteration, MAX_ITER);
+          addIterCard(payload);
+          if (parseFloat(payload.score) > streamBestScore) {
+            streamBestScore = parseFloat(payload.score);
+            bestCubeB64 = payload.cube_b64;
+          }
+        } else if (evtType === 'done') {
+          if (payload.cube_b64) bestCubeB64 = payload.cube_b64;
+          if (payload.best_score) streamBestScore = payload.best_score;
+        } else if (evtType === 'error') {
+          if (!payload.iteration) {
+            // Stream-level error (e.g. AI not configured)
+            aiAvailable = false;
+          }
+          // Per-iteration errors are non-fatal
+        }
+      }
+    }
+
+  } catch (err) {
+    aiAvailable = false;
+  }
+
+  if (!aiAvailable) {
+    noGeminiBox.classList.remove('hidden');
+    refineCard.classList.add('hidden');
+    bestCubeB64 = v1CubeB64;
+    showFinal(0, 0);
+  } else {
+    if (!bestCubeB64) bestCubeB64 = v1CubeB64;
+    showFinal(streamBestScore, iterCount);
+  }
+}
+
+// ── Error display ─────────────────────────────────────────────────────────────
+function showErr(msg) {
+  errBox.textContent = '⚠ ' + msg;
+  errBox.classList.remove('hidden');
+}
+</script>
+</body>
+</html>
