@@ -4,6 +4,8 @@ Upload a **source image** (color reference) and a **target photo** — get a pro
 
 Compatible with DaVinci Resolve, Premiere Pro, Final Cut Pro, Lightroom, Photoshop, and any tool that accepts `.cube` LUTs.
 
+![LUT Generator Screenshot](assets/screenshot.png)
+
 ## How It Works
 
 1. **Upload** a source image (the color look you want) and a target photo (the one to recolor)
